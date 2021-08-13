@@ -10,7 +10,7 @@ This project requires a host group named `argocd_cluster` to hold ArgoCD variabl
 
 | Playbook                       | Description                             | Ready for AWX |
 |--------------------------------|-----------------------------------------|---------------|
-| `playbooks/backup_restore.yml` | Backup and restore ArgoCD configuration | No            |
+| `playbooks/backup_restore.yml` | Backup and restore ArgoCD configuration | Yes           |
 
 ### Playbook - `playbooks/backup_restore.yml`
 

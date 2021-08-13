@@ -7,109 +7,45 @@
 - hosts: argocd_cluster
   tasks:
 
-    - name: Search ArgoCD server pod
-      shell: >
+    - name: Search ArgoCD server pod  # noqa risky-shell-pipe
+      shell: |
         kubectl -n "{{ argocd_namespace }}" get pods | grep 'argocd-server-' | awk '{print $1}' | head -n 1
+      changed_when: false
       register: _argocd_pod
-      # when:
-      #   - pg_k8s | default(true)
-      #   - pg_podname | default('') | length < 1
-      tags: [never, backup, restore]
-
+      tags: [never, backup-local, backup-remote, restore]
 
     - name: Set facts
       set_fact:
-        argocd_pod: "{{ argocd_pod | default(_argocd_pod.stdout)}}"
-      # when:
-      #   - pg_k8s | default(true)
-      tags: [never, backup, restore]
-
-
-    - name: Create ArgoCD dump temporary file
-      tempfile:
-        state: file
-      register: _dump
-      tags: [never, backup, restore]
+        argocd_pod: "{{ argocd_pod | default(_argocd_pod.stdout) }}"
+      changed_when: false
+      tags: [never, backup-local, backup-remote, restore]
 
     # --- Backup ---
 
     - name: Export ArgoCD dump
-      shell: >
-        kubectl -n {{ argocd_namespace }} exec pod/{{ argocd_pod }} -- argocd-util export > {{ _dump.path }}
+      shell: |
+        kubectl -n {{ argocd_namespace }} exec pod/{{ argocd_pod }} -- argocd-util export
+      register: _argocd_yaml
+      changed_when: false
       tags:
-        [never, backup]
+        [never, backup-local, backup-remote]
 
-
-    - name: Fetch ArgoCD dump
-      fetch:
-        src: "{{ _dump.path }}"
+    - name: Save ArgoCD dump
+      copy:
+        content: "{{ _argocd_yaml.stdout }}"
         dest: "{{ argocd_dump | default(lookup('env', 'PWD') + '/' + 'argocd.yaml') }}"
-        flat: yes
-      tags: [never, backup]
-
-    # # --- Restore ---
-
-    # - name: Copy AWX database dump
-    #   copy:
-    #     # src: "{{ hostvars['localhost'].repository.path }}/database.dump"
-    #     src: "{{ awx_db_dump | default(lookup('env', 'PWD') + '/' + 'database.dump') }}"
-    #     dest: "{{ _dump.path }}"
-    #   tags: [ never, restore ]
+        mode: 0644
+      delegate_to: localhost
+      tags: [never, backup-local]
 
 
-    # - name: Get current AWX deployment scale
-    #   k8s_info:
-    #     kind: Deployment
-    #     name: awx
-    #     namespace: "{{ kubernetes_namespace }}"
-    #   register: _deployment
-    #   tags: [ never, restore ]
-    
+- hosts: backup_servers
+  tasks:
 
-    # - name: Downscale AWX deployment
-    #   shell: >
-    #     kubectl -n {{ kubernetes_namespace }} scale --replicas=0 deployment/awx
-    #   register: _downscale_awx
-    #   failed_when:
-    #     - _downscale_awx.failed and not "NotFound" in _downscale_awx.stderr
-    #   tags: [ never, restore ]
-
-
-    # - name: Wait for AWX deployment to be downscaled
-    #   k8s_info:
-    #     kind: Deployment
-    #     name: awx
-    #     namespace: "{{ kubernetes_namespace }}"
-    #   when:
-    #     - not _downscale_awx.failed
-    #   register: _wait_deployment
-    #   until:
-    #     - _wait_deployment.resources[0].status.replicas | default(0) == 0
-    #   retries: 10
-    #   delay: 10
-    #   tags: [ never, restore ]
-
-
-    # - name: Import AWX database
-    #   shell: >
-    #     cat {{ _dump.path }} | kubectl exec -i -n {{ kubernetes_namespace }} {{ pg_podname }} -- 
-    #     /bin/bash -c "export PGPASSWORD={{ pg_password }}; pg_restore --no-owner --no-acl --role={{ pg_username }} --clean -h {{ pg_hostname }} -U {{ pg_username }} -d {{ pg_database }}"
-    #   tags: [ never, restore ]
-
-
-    # - name: Upscale AWX deployment
-    #   shell: >
-    #     kubectl -n {{ kubernetes_namespace }} scale --replicas={{ _deployment.resources[0].status.replicas | int }} deployment/awx
-    #   when:
-    #     - not _downscale_awx.failed
-    #     - _deployment.resources[0].status.replicas | default(0) > 0
-    #   tags: [ never, restore ]
-
-
-    # --- All ---
-
-    - name: Cleanup
-      file:
-        path: "{{ _dump.path }}"
-        state: absent
-      tags: [never, backup, restore]
+    - name: Export backup
+      copy:
+        content: "{{ hostvars[item]._argocd_yaml.stdout }}"
+        dest: "{{ hostvars[item].argocd_backup_directory }}/argocd.{{ ansible_date_time.iso8601 }}.yml"
+        mode: 0644
+      loop: "{{ groups['argocd_cluster'] }}"
+      tags: [never, backup-remote]
