@@ -16,9 +16,7 @@ This project requires a host group named `argocd_cluster` to hold ArgoCD variabl
 
 Backup and restore ArgoCD.
 
-By default, the dump file will be write and read to/from `./argocd.yaml`; You can customize the path by setting the variable `argocd_dump`.
-
-Usage:
-
-* Backup: `ansible-playbook -i <path to inventory> playbooks/backup_restore.yml --tags backup`
-* Restore: `ansible-playbook -i <path to inventory> playbooks/backup_restore.yml --tags restore`
+| Tag             | Description                                          |
+|-----------------|------------------------------------------------------|
+| `backup-local`  | Backup ArgoCD into a local file                      |
+| `backup-remote` | Backup ArgoCD onto the remove `ict-backup-01` server |
